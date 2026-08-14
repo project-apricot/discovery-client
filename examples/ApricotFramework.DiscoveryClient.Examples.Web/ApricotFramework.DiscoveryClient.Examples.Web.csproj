@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <WarnOnPackingNonPackableProject>false</WarnOnPackingNonPackableProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/ApricotFramework.DiscoveryClient.AspNetCore/ApricotFramework.DiscoveryClient.AspNetCore.csproj" />
+    <ProjectReference Include="../../src/ApricotFramework.DiscoveryClient.Yaml/ApricotFramework.DiscoveryClient.Yaml.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="EmbeddedResources/services.yaml" />
+  </ItemGroup>
+
+</Project>

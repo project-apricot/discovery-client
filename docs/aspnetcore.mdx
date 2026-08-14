@@ -1,0 +1,144 @@
+---
+title: ASP.NET Core
+description: Registration, configuration binding, startup validation, reloads and extension points.
+---
+
+# ASP.NET Core
+
+`ApricotFramework.DiscoveryClient.AspNetCore` adds three things to the core: settings bound from
+configuration, those settings validated when the host starts, and a client that picks up a reload
+without a restart.
+
+## Install and register
+
+```bash
+dotnet add package ApricotFramework.DiscoveryClient.AspNetCore
+```
+
+```csharp
+using ApricotFramework.DiscoveryClient.AspNetCore.Extensions;
+
+builder.Services.AddServiceDefinitionsSource<CatalogueSource>();
+builder.Services.AddDiscoveryClient(builder.Configuration);
+```
+
+One call registers four things, all singletons:
+
+| Service | Implementation | Registration |
+| --- | --- | --- |
+| `IDiscoveryClient` | `ConfigAwareStaticDiscoveryClient` | `TryAdd` |
+| `IServiceRegistry` | `DefaultServiceRegistry` | `TryAdd` |
+| `IServiceDefinitionsSource` | `EmptyServiceDefinitionsSource` | `TryAddEnumerable` |
+| `IValidateOptions<StaticDiscoveryOptions>` | `StaticDiscoveryOptionsValidator` | `TryAddEnumerable` |
+
+The empty source is there so a host with no catalogue starts and resolves nothing, rather than failing
+to construct the registry. It declares no services, and sources are merged, so it can never mask a real
+catalogue. Calling `AddDiscoveryClient` twice is harmless — every registration is a `TryAdd`.
+
+## Configuration
+
+```jsonc
+{
+  "StaticDiscovery": {
+    "HostingType": "k8s",
+    "Profile": "istio",
+    "DefaultProtocol": "https",
+    "DefaultGrpcProtocol": "https"
+  }
+}
+```
+
+Every setting is optional, and a host with no `StaticDiscovery` section at all still starts: services
+then resolve to their own name over HTTP, which is what a container network wants.
+
+Three ways to supply them:
+
+```csharp
+// The "StaticDiscovery" section.
+builder.Services.AddDiscoveryClient(builder.Configuration);
+
+// A section of your own naming.
+builder.Services.AddDiscoveryClient(builder.Configuration, "Discovery:Static");
+
+// In code, with no configuration system involved.
+builder.Services.AddDiscoveryClient(options =>
+{
+    options.HostingType = StaticHostingTypes.Localhost;
+    options.DefaultProtocol = ServiceProtocolTypes.Http;
+});
+```
+
+The section name is also available as
+`DiscoveryClientServiceCollectionExtensions.ConfigurationSectionName`.
+
+## Validation
+
+Two settings are checked when the host starts, because both fail silently otherwise:
+
+| Setting | Rejected when | What it would otherwise do |
+| --- | --- | --- |
+| `HostingType` | set to something not in the known list | send every call to a plausible-looking wrong host |
+| `DefaultProtocol` | set to anything but `http`/`https` | resolve every lookup to `null` |
+| `DefaultGrpcProtocol` | set to anything but `http`/`https` | resolve every gRPC lookup to `null` |
+
+An **unset** value is not a mistake and validates. Only a non-empty unrecognised one fails, which
+catches a typo without stopping a deployment that was working.
+
+```
+Unhandled exception. Microsoft.Extensions.Options.OptionsValidationException:
+HostingType 'kubernetes' is not recognised. Use one of localhost, docker, docker_localhost, k8s,
+or leave it unset to reach every service by its own name.
+```
+
+Every problem in the section is reported at once, not just the first.
+
+> **Note.** Validation lives here, not in the core. `DefaultStaticDiscoveryClient` still accepts a
+> hosting type of its own invention and resolves it to the bare service name, which is what makes a
+> custom `GetHostname` override workable. The asymmetry is deliberate: a value written in code is a
+> decision, and the same value in a configuration file is usually a typo.
+
+## Reloads
+
+`ConfigAwareStaticDiscoveryClient` reads the options on every call, so changing the profile or the
+protocol in a reloadable configuration source takes effect on the next lookup. No restart, and no
+cached URLs to invalidate — which matters because switching profile is how a deployment changes where
+its calls go.
+
+The settings are read **once per call** rather than once per setting, so a reload landing mid-resolution
+cannot produce a URL that mixes the old profile with the new protocol.
+
+## Replacing the pieces
+
+```csharp
+builder.Services.AddDiscoveryClient<MyDiscoveryClient>();   // by type
+builder.Services.AddDiscoveryClient(myClientInstance);      // by instance
+builder.Services.AddServiceRegistry<MyRegistry>();          // where definitions come from
+builder.Services.AddServiceDefinitionsSource(mySource);     // an extra catalogue
+```
+
+Order does not matter for any of them. Registered before `AddDiscoveryClient`, yours stands because the
+built-in is only added when none is present; registered after, yours stands because the last
+registration of a service is the one resolved.
+
+`AddServiceDefinitionsSource` **adds** rather than replaces — that is the point, since sources are
+merged. The others replace.
+
+> **Warning.** Replacing `IServiceRegistry` replaces where definitions come from, so registered
+> `IServiceDefinitionsSource` instances are only consulted if your registry consults them.
+
+## Consuming it
+
+```csharp
+app.MapGet("/invoices", async (IDiscoveryClient discovery, HttpClient http) =>
+{
+    var url = await discovery.GetApiUrl("billing", "/v1/invoices");
+
+    // Answering null is the library's whole error model, so this is the one check to write.
+    if (url is null)
+    {
+        return Results.Problem("No address is configured for the billing service.");
+    }
+
+    return Results.Ok(await http.GetStringAsync(url));
+});
+```

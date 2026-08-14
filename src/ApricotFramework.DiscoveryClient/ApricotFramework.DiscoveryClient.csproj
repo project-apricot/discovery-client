@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Zero-dependency static service discovery for .NET: resolve a service name to a base URL from a declarative catalogue, choosing the host by hosting environment (localhost, docker, Kubernetes) and the port by protocol and role, with per-profile overrides.</Description>
+    <PackageTags>service-discovery;discovery;microservices;kubernetes;docker;grpc</PackageTags>
+  </PropertyGroup>
+
+</Project>

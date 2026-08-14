@@ -1,0 +1,7 @@
+# CA1716 reports 'Namespace' because it matches a language keyword case-insensitively. The name is
+# not free here: it mirrors the `namespace:` key in a service catalogue, which is a file consumers
+# author and therefore a stored contract. Renaming the member would leave the property and the key it
+# binds spelled differently for no gain — and the BCL itself ships Type.Namespace and
+# XmlQualifiedName.Namespace. Scoped to the model so nothing else in the package loses the rule.
+[Model/*.cs]
+dotnet_diagnostic.CA1716.severity = none

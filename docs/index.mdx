@@ -1,0 +1,94 @@
+---
+title: Discovery Client
+description: What static service discovery is for, and what the three packages contain.
+---
+
+# Discovery Client
+
+Service discovery without a discovery server. You write down where your services listen — once — and
+the library turns a service name into a URL, differently depending on where the caller is running.
+
+The problem it solves is the one every multi-service system meets early: the same call goes to
+`http://localhost:11100` on a developer machine, `http://billing:11100` on a container network, and
+`https://billing.payments.svc.cluster.local:443` behind a cluster ingress. Hard-coding those means
+three sets of configuration that drift. Running Consul or Eureka to answer a question whose answer
+never changes is a service to operate for no gain.
+
+Here the answer is a file, and one setting picks how to read it.
+
+## Packages
+
+| Package | What it is |
+| --- | --- |
+| `ApricotFramework.DiscoveryClient` | The zero-dependency core: the catalogue model, the registry and URL resolution |
+| `ApricotFramework.DiscoveryClient.AspNetCore` | Binds settings from configuration, validates them at startup, follows reloads |
+| `ApricotFramework.DiscoveryClient.Yaml` | Reads a catalogue from a YAML file, a stream, or an embedded resource |
+
+The core works on its own. `DefaultStaticDiscoveryClient` takes a registry and a settings object and
+needs no container and no configuration system, which is what a console tool or a worker wants.
+
+## Install
+
+```bash
+dotnet add package ApricotFramework.DiscoveryClient
+dotnet add package ApricotFramework.DiscoveryClient.AspNetCore
+dotnet add package ApricotFramework.DiscoveryClient.Yaml
+```
+
+## The shape of it
+
+A **catalogue** lists services. Each service has **ports**, and each port declares a **protocol** and
+one or more **roles** — what kind of traffic it serves. Optionally a service has **profiles**, named
+sets of overrides for a deployment variant.
+
+```yaml
+services:
+  billing:
+    namespace: payments
+    domain: cluster.local
+    ports:
+      - protocol: http
+        roles: [ 'api' ]
+        port: 11100
+      - protocol: https
+        roles: [ 'api' ]
+        port: 11101
+      - protocol: https
+        roles: [ 'grpc' ]
+        port: 11105
+    overrides:
+      istio:
+        ports:
+          - protocol: https
+            roles: [ 'api', 'grpc' ]
+            port: 443
+```
+
+Two settings then decide what a lookup returns: the **hosting type**, which produces the hostname, and
+the **default protocol**, which selects among the ports. Neither is written in the catalogue, because
+they are properties of where the caller runs rather than of the service being called.
+
+```csharp
+// HostingType "k8s", DefaultProtocol "https", Profile "istio"
+await discovery.GetApiBase("billing");   // https://billing.payments.svc.cluster.local:443
+
+// HostingType "localhost", DefaultProtocol "http", no profile
+await discovery.GetApiBase("billing");   // http://localhost:11100
+```
+
+## What it is not
+
+> **Note.** This is *static* discovery. Nothing is registered at runtime, nothing is health-checked,
+> and no instance list is maintained — a service resolves to one address, and load balancing is left to
+> whatever sits behind that address (a Kubernetes Service, an ingress, a proxy). If you need liveness
+> or a changing set of instances, you need a discovery server, not this.
+
+The `IServiceRegistry` seam is where a dynamic implementation would go: it is the piece that answers
+what a service's definition is, and its methods are awaitable for that reason. URL building would stay
+as it is.
+
+## Next
+
+- [Usage](./usage) — the catalogue schema, hosting types, roles and profiles in full
+- [ASP.NET Core](./aspnetcore) — registration, configuration, validation and reloads
+- [YAML](./yaml) — loading a catalogue from a file or an embedded resource
