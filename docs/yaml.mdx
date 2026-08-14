@@ -1,0 +1,94 @@
+---
+title: YAML
+description: Loading a service catalogue from a file, a stream, or an embedded resource.
+---
+
+# YAML
+
+`ApricotFramework.DiscoveryClient.Yaml` reads a catalogue written as YAML. It is the only package with
+a third-party dependency — [YamlDotNet](https://www.nuget.org/packages/YamlDotNet) — which is why it is
+separate: the core stays dependency-free for consumers who build their catalogue another way.
+
+## Install
+
+```bash
+dotnet add package ApricotFramework.DiscoveryClient.Yaml
+```
+
+## From an embedded resource
+
+The usual choice. Embedding the catalogue ships it with the code that reads it, so a deployment cannot
+start with the file missing or a stale copy of it. The trade is that changing the catalogue means a
+rebuild.
+
+```xml
+<ItemGroup>
+  <EmbeddedResource Include="EmbeddedResources/services.yaml" />
+</ItemGroup>
+```
+
+```csharp
+public class CatalogueSource : EmbeddedYamlServiceDefinitionsSource
+{
+    public CatalogueSource()
+        : base("EmbeddedResources.services.yaml", Assembly.GetExecutingAssembly())
+    {
+    }
+}
+```
+
+```csharp
+builder.Services.AddServiceDefinitionsSource<CatalogueSource>();
+```
+
+> **Warning.** The resource path uses **dots** for folder separators, not slashes:
+> `EmbeddedResources.services.yaml`, never `EmbeddedResources/services.yaml`. It is matched exactly,
+> including case. A resource that is not there throws while the source is being constructed — at
+> startup, naming what it looked for and in which assembly — rather than silently resolving nothing.
+
+The name is built from the assembly name plus the path. If your project sets a `RootNamespace` that
+differs from its assembly name, pass it as the third argument.
+
+## From a file or any stream
+
+```csharp
+// Read from disk. The callback runs when the catalogue is read, not when the source is built.
+var source = new YamlServiceDefinitionsSource(() => File.OpenRead("/etc/services/services.yaml"));
+
+builder.Services.AddServiceDefinitionsSource(source);
+```
+
+A mounted file suits a catalogue that operators change without rebuilding the service. Note that
+sources are read once, when the registry is constructed, so an edit takes effect on the next start.
+
+## What is tolerated, and what is not
+
+| Input | Result |
+| --- | --- |
+| Empty file, or only comments | A catalogue with no services |
+| `services:` with no value | A catalogue with no services |
+| A service named with no body | Dropped; it declares no ports, so it could not resolve |
+| A key the model does not know | Ignored |
+| `protocol: HTTPS` | Matches; protocols are folded to lower case when resolving |
+| Malformed YAML | Throws |
+| `port: not-a-number` | Throws |
+
+Unknown keys are ignored so a catalogue can carry annotations, or a field a newer version of this
+library reads, without stopping a host that does not understand it.
+
+> **Warning.** That tolerance cuts both ways: a **misspelled** key is silently skipped rather than
+> reported. Writing `port:` where you meant `ports:` gives a service with no ports, which resolves to
+> `null` with nothing in the log to say why. If a service unexpectedly resolves to nothing, check the
+> key spellings in its catalogue entry first.
+
+Malformed YAML and a non-numeric port do throw, because those are deployment mistakes rather than
+services that cannot be found — a catalogue that is not parseable is not a catalogue.
+
+## Naming convention
+
+Keys are hyphenated lower case. Every field in the model is a single word, so today that is
+indistinguishable from plain lower case — but it is the convention the catalogue format is defined
+with, and changing it would stop matching the keys in every existing file.
+
+Service names and profile names are **not** affected: they are map keys, taken verbatim, so
+`Billing-EU` and `billing-eu` are two different services.

@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>YAML service catalogues for ApricotFramework.DiscoveryClient: load service definitions from a services.yaml file on disk, an embedded resource, or any stream.</Description>
+    <PackageTags>service-discovery;discovery;microservices;yaml;configuration</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../ApricotFramework.DiscoveryClient/ApricotFramework.DiscoveryClient.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="YamlDotNet" />
+  </ItemGroup>
+
+</Project>

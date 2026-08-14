@@ -1,0 +1,175 @@
+---
+title: Usage
+description: The catalogue schema, hosting types, roles, protocols and profile overrides in full.
+---
+
+# Usage
+
+## The catalogue
+
+```yaml
+services:                       # a map of service name to definition
+  billing:                      # the name callers pass, and the hostname under docker and k8s
+    namespace: payments         # Kubernetes namespace; ignored by every other hosting type
+    domain: cluster.local       # Kubernetes cluster domain; ignored by every other hosting type
+    ports:
+      - protocol: https         # http or https — nothing else can produce a URL
+        roles: [ 'api', 'ui' ]  # what this port serves; a port may serve several roles
+        port: 11101
+    overrides:
+      istio:                    # a profile name, selected by configuration
+        ports:
+          - protocol: https
+            roles: [ 'api' ]
+            port: 443
+```
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `services` | no | A catalogue declaring none contributes nothing; it is not an error |
+| `namespace` | no | Only read under `k8s` hosting; defaults to `default` |
+| `domain` | no | Only read under `k8s` hosting; defaults to `cluster.local` |
+| `ports` | no | A service with none resolves to nothing |
+| `protocol` | no | Matched case-insensitively; a port without one never matches |
+| `roles` | no | Matched **case-sensitively**; a port without any never matches |
+| `port` | no | Any `int`; the library does not police the range |
+| `overrides` | no | Keyed by profile name, matched case-sensitively |
+
+Service names are matched **case-sensitively**, so `Billing` does not find `billing`.
+
+> **Note.** A service named with no body — `billing:` on its own — parses to nothing at all and is
+> dropped. It does not erase a definition of the same name from an earlier source.
+
+## Resolving a URL
+
+A resolved URL is `{scheme}://{host}:{port}`. The three parts come from three different places:
+
+- **scheme** — the configured default protocol, lower-cased
+- **host** — the hosting type, and for Kubernetes the service's namespace and domain
+- **port** — the catalogue entry matching that protocol and the requested role
+
+```csharp
+await discovery.GetApiBase("billing");                  // the api role
+await discovery.GetApiUrl("billing", "/v1/invoices");   // the api role, with a path
+await discovery.GetGrpcUrl("billing");                  // the grpc role
+await discovery.GetBaseUrl("billing", "ui");            // any role
+await discovery.GetUrl("billing", "ui", "/dashboard");  // any role, with a path
+```
+
+Every one of them answers `null` rather than throwing — for an unknown service, a role no port serves,
+a protocol that cannot appear in a URL, or a blank service name. A caller that cannot proceed without
+the URL should say so itself, where it has the context to write a useful message.
+
+`GetApiUrl` and `GetUrl` join the path with exactly one slash however each side was written, so
+`"/v1/invoices"` and `"v1/invoices"` give the same result.
+
+## Hosting types
+
+| `HostingType` | Hostname | For |
+| --- | --- | --- |
+| `localhost` | `localhost` | Everything on one machine, told apart by port |
+| `docker` | the service name | A container network resolving service names |
+| `docker_localhost` | `host.docker.internal` | Containers and host processes side by side |
+| `k8s` | `service.namespace.svc.domain` | Inside a Kubernetes cluster |
+| unset, or anything else | the service name | Any network where service names resolve |
+
+Under `k8s`, a definition naming neither a namespace nor a domain resolves to the **bare service
+name** — inside a cluster the pod's own DNS search domains complete it, which is what a caller in the
+same namespace wants. Naming either one produces the fully qualified form and fills the other from its
+default.
+
+```yaml
+billing: { }                                     # -> billing
+billing: { namespace: payments }                 # -> billing.payments.svc.cluster.local
+billing: { domain: prod.internal }               # -> billing.default.svc.prod.internal
+billing: { namespace: payments, domain: prod.internal }  # -> billing.payments.svc.prod.internal
+```
+
+> **Warning.** An unrecognised hosting type resolves to the bare service name rather than failing. That
+> is deliberate — it is the right answer on most networks, and it keeps a bespoke value usable when you
+> build the client by hand. When you register through the ASP.NET Core package it is rejected at
+> startup instead, because in a configuration file it is far more likely a typo. See
+> [ASP.NET Core](./aspnetcore).
+
+To add a hosting type of your own, override `GetHostname` on `BaseStaticDiscoveryClient` and delegate
+to `base` for the cases you do not handle.
+
+## Roles and protocols
+
+A role is a label the catalogue chooses. `api`, `ui` and `grpc` have constants on `ServicePortRoles`
+and the first and third have named accessors, but nothing stops a catalogue declaring `metrics` and a
+caller asking for it through `GetBaseUrl`.
+
+Protocols and roles are matched differently, on purpose:
+
+| | Matching | Why |
+| --- | --- | --- |
+| Protocol | case-insensitive | One of two known values, so there is a canonical form to fold to |
+| Role | case-sensitive | An arbitrary label, so there is no canonical form and folding would guess |
+
+**gRPC uses its own protocol setting.** `DefaultGrpcProtocol` is separate from `DefaultProtocol`
+because the two frequently differ on TLS: an ingress that terminates TLS for the HTTP API often passes
+gRPC through untouched, or the reverse. Every role other than `grpc` uses `DefaultProtocol`.
+
+Only `http` and `https` can produce a URL. Any other value — `grpc`, `h2`, `tcp` — resolves every
+lookup to `null`, and the ASP.NET Core package rejects it at startup.
+
+## Profiles
+
+A profile is a named deployment variant of the same topology. Selecting one merges its overrides into
+every definition that declares it:
+
+- `namespace` and `domain` — a value in the profile **replaces** the service's; a blank one leaves it
+- `ports` — the profile's are **appended** to the service's, and the **last** match wins
+
+That appending rule is the whole mechanism, and it has a consequence worth knowing:
+
+```yaml
+billing:
+  ports:
+    - { protocol: https, roles: [ 'api' ], port: 11101 }
+    - { protocol: https, roles: [ 'ui' ], port: 11103 }
+  overrides:
+    istio:
+      ports:
+        - { protocol: https, roles: [ 'api' ], port: 443 }
+```
+
+Under the `istio` profile, `api` resolves to **443** — the override wins because it comes later. But
+`ui`, which the override says nothing about, still resolves to **11103**. An override narrows what it
+names and leaves the rest alone; it is not a replacement for the port list.
+
+A profile a service does not declare is not an error: the definition resolves as written. Profile names
+are matched case-sensitively, and overrides nest only one level deep — overrides of an override are
+ignored.
+
+## Sources
+
+Definitions come from one or more `IServiceDefinitionsSource` instances, merged by service name in
+registration order. Where two declare the same service, **the later one wins outright** — its
+definition replaces the earlier one rather than merging with it.
+
+```csharp
+// The shared catalogue, then one service restated for this deployment.
+services.AddServiceDefinitionsSource<SharedCatalogue>();
+services.AddServiceDefinitionsSource<LocalOverrides>();
+```
+
+Sources are read **once**, while the registry is constructed, so an expensive read costs one per host
+and a change to a catalogue file takes effect on the next start. To build a catalogue in code, hand a
+`ServiceDefinitions` to `StaticServiceDefinitionsSource`.
+
+## Without a container
+
+```csharp
+var registry = new DefaultServiceRegistry([new StaticServiceDefinitionsSource(catalogue)]);
+
+var discovery = new DefaultStaticDiscoveryClient(registry, new StaticDiscoveryOptions
+{
+    HostingType = StaticHostingTypes.Localhost,
+    DefaultProtocol = ServiceProtocolTypes.Http,
+});
+```
+
+Its settings are fixed at construction. For settings that follow configuration reloads, use the
+ASP.NET Core package.

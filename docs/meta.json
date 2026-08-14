@@ -1,0 +1,5 @@
+{
+  "title": "Discovery Client",
+  "description": "Static service discovery for .NET: one declarative catalogue resolved to URLs per hosting environment, with ASP.NET Core and YAML integration.",
+  "pages": ["index", "usage", "aspnetcore", "yaml"]
+}

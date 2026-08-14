@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ApricotFramework.DiscoveryClient/ApricotFramework.DiscoveryClient.csproj" />
+    <Project Path="src/ApricotFramework.DiscoveryClient.AspNetCore/ApricotFramework.DiscoveryClient.AspNetCore.csproj" />
+    <Project Path="src/ApricotFramework.DiscoveryClient.Yaml/ApricotFramework.DiscoveryClient.Yaml.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <File Path="tests\.editorconfig" />
+    <Project Path="tests/ApricotFramework.DiscoveryClient.Tests/ApricotFramework.DiscoveryClient.Tests.csproj" />
+    <Project Path="tests/ApricotFramework.DiscoveryClient.AspNetCore.Tests/ApricotFramework.DiscoveryClient.AspNetCore.Tests.csproj" />
+    <Project Path="tests/ApricotFramework.DiscoveryClient.Yaml.Tests/ApricotFramework.DiscoveryClient.Yaml.Tests.csproj" />
+  </Folder>
+  <Folder Name="/examples/">
+    <Project Path="examples/ApricotFramework.DiscoveryClient.Examples.Web/ApricotFramework.DiscoveryClient.Examples.Web.csproj" />
+  </Folder>
+</Solution>

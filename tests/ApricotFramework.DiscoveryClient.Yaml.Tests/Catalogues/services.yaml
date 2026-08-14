@@ -1,0 +1,56 @@
+services:
+
+  svc-one:
+    namespace: namespace-one
+    domain: new-cluster.cool
+    ports:
+      - protocol: http
+        roles: [ 'api' ]
+        port: 11100
+      - protocol: https
+        roles: [ 'api' ]
+        port: 11101
+      - protocol: http
+        roles: [ 'ui' ]
+        port: 11102
+      - protocol: https
+        roles: [ 'ui' ]
+        port: 11103
+      - protocol: http
+        roles: [ 'grpc' ]
+        port: 11104
+      - protocol: https
+        roles: [ 'grpc' ]
+        port: 11105
+    overrides:
+      istio:
+        ports:
+          - protocol: https
+            roles: [ 'api' ]
+            port: 443
+          - protocol: https
+            roles: [ 'grpc' ]
+            port: 443
+
+  svc-two:
+    namespace: namespace-two
+    domain: new-cluster.cool
+    ports:
+      - protocol: http
+        roles: [ 'api' ]
+        port: 11106
+      - protocol: https
+        roles: [ 'api' ]
+        port: 11107
+      - protocol: http
+        roles: [ 'ui' ]
+        port: 11108
+      - protocol: https
+        roles: [ 'ui' ]
+        port: 11109
+      - protocol: http
+        roles: [ 'grpc' ]
+        port: 11110
+      - protocol: https
+        roles: [ 'grpc' ]
+        port: 11111
