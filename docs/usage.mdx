@@ -89,7 +89,7 @@ billing: { namespace: payments, domain: prod.internal }  # -> billing.payments.s
 > is deliberate — it is the right answer on most networks, and it keeps a bespoke value usable when you
 > build the client by hand. When you register through the ASP.NET Core package it is rejected at
 > startup instead, because in a configuration file it is far more likely a typo. See
-> [ASP.NET Core](./aspnetcore).
+> [ASP.NET Core](./aspnetcore.mdx).
 
 To add a hosting type of your own, override `GetHostname` on `BaseStaticDiscoveryClient` and delegate
 to `base` for the cases you do not handle.

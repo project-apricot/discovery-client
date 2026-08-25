@@ -79,4 +79,4 @@ role wins. That is what makes an override take effect, and it means an override 
 about a role leaves that role on the service's own port — `ui` above is still reachable on 11103 under
 the `istio` profile.
 
-Full documentation: <https://projectapricot.dev>
+Full documentation: <https://projectapricot.dev/docs/discovery-client>
